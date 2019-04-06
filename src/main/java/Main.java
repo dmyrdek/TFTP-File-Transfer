@@ -5,6 +5,15 @@ import java.net.URL;
 
 public class Main {
 
+    public static void main(String[] args) throws IOException {
+        System.out.println("Making WRQ Packet:");
+        Packet wrq = new Packet((byte)2, "christainasdfasdfasdfasfasdfsafsfasfewqq3 rfqsfasf23456789097654635678ygjkjhbvhkcgi.jpg");
+        byte[] wrqArray = wrq.getByteArray();
+        System.out.println("Byte array:");
+        System.out.println(wrq.toString());
+        System.out.println("Converting back to Packet:");
+        Packet newPacket = wrq.convertToPacket(wrq.getByteArray());
+    }
 
 
     public static void getIPAddress() throws IOException {
