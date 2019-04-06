@@ -6,7 +6,7 @@ public class Packet {
     private byte opCode;
     private byte block;
 
-    //Mode, always use optec
+    //Mode, always use octet
     private static final String MODE = "octet";
 
     // Packet Size
@@ -20,6 +20,8 @@ public class Packet {
 
     //Data Variables
     private byte[] data;
+    private int dataByteLength = 0;
+    private byte[] dataByteArray;
 
     //ACK Variables
     private int ackByteLength = 0;
@@ -59,9 +61,29 @@ public class Packet {
     }
 
     //Data Packet
-    public Packet(byte opCode, byte[] data){
+    public Packet(byte opCode, byte block, byte[] data){
         this.opCode = opCode;
         this.data = data;
+
+        dataByteLength = 2 + fileName.length() + 1 + MODE.length() + 1;
+        dataByteArray = new byte[dataByteLength];
+        int position = 0;
+
+        dataByteArray[position] = zeroByte;
+        position++;
+        dataByteArray[position] = opCode;
+        position++;
+        dataByteArray[position] = zeroByte;
+        position++;
+        dataByteArray[position] = block;
+        position++;
+        for (int i = 0; i < data.length; i++) {
+            dataByteArray[position] = data[i];
+
+            if (i != data.length-1)
+                position++;
+        }
+        byteBuffer = ByteBuffer.wrap(dataByteArray);
     }
 
     //ACK Packet
@@ -72,6 +94,7 @@ public class Packet {
         ackByteLength = 4;
         ackByteArray = new byte[ackByteLength];
         int position = 0;
+
         wrqByteArray[position] = zeroByte;
         position++;
         ackByteArray[position] = opCode;
