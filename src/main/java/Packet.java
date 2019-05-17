@@ -4,8 +4,7 @@ public class Packet {
 
     private byte[] byteArray;
     private int byteLength = 0;
-    private byte opCode;
-    private byte block;
+    private static byte opCode;
     private byte zeroByte = 0;
 
     //Mode, always use octet
@@ -24,71 +23,57 @@ public class Packet {
         return byteArray;
     }
 
+    public int getBlockNum() {
+        if (byteArray[1] == 2)
+            return 0;
+        else
+            return ((byteArray[2] & 0xff) << 8) | (byteArray[3] & 0xff);
+    }
+
     //WRQ Packet
     public Packet(byte opCode, String fileName) {
         this.opCode = opCode;
         this.fileName = fileName;
-        byteLength = 2 + fileName.length() + 1 + MODE.length() + 1;
-        byteArray = new byte[byteLength];
-        int position = 0;
-        byteArray[position] = zeroByte;
-        position++;
-        byteArray[position] = opCode;
-        position++;
-        for (int i = 0; i < fileName.length(); i++) {
-            byteArray[position] = (byte) fileName.charAt(i);
-            position++;
-        }
-        byteArray[position] = zeroByte;
-        position++;
-        for (int i = 0; i < MODE.length(); i++) {
-            byteArray[position] = (byte) MODE.charAt(i);
-            position++;
-        }
-        byteArray[position] = zeroByte;
+
+        this.byteArray = new byte[4 + fileName.length() + MODE.length()];
+
+        int packetByte = 0;
+        this.byteArray[packetByte] = 0;
+        this.byteArray[++packetByte] = this.opCode;
+
+        System.arraycopy(fileName.getBytes(), 0, byteArray, ++packetByte, fileName.length());
+
+        this.byteArray[packetByte += fileName.length()] = 0;
+
+        System.arraycopy(MODE.getBytes(), 0, byteArray, ++packetByte, MODE.length());
+
+        this.byteArray[packetByte += MODE.length()] = 0;
     }
 
     //Data Packet
-    public Packet(byte opCode, byte block, byte[] data) {
+    public Packet(byte opCode, byte[] data, byte[] block) {
         this.opCode = opCode;
-        this.data = data;
 
-        byteLength = 2 + fileName.length() + 1 + MODE.length() + 1;
-        byteArray = new byte[byteLength];
-        int position = 0;
+        this.byteArray = new byte[4 + data.length];
+        int packetByte = 0;
+        this.byteArray[packetByte] = 0;
+        this.byteArray[++packetByte] = this.opCode;
 
-        byteArray[position] = zeroByte;
-        position++;
-        byteArray[position] = opCode;
-        position++;
-        byteArray[position] = zeroByte;
-        position++;
-        byteArray[position] = block;
-        position++;
-        for (int i = 0; i < data.length; i++) {
-            byteArray[position] = data[i];
+        System.arraycopy(block, 0, byteArray, ++packetByte, block.length);
+        ++packetByte;
 
-            if (i != data.length - 1)
-                position++;
-        }
+        System.arraycopy(data, 0, byteArray, ++packetByte, data.length);
     }
 
     //ACK Packet
-    public Packet(byte opCode, byte block, int make_this_null) {
+    public Packet(byte opCode, byte[] block, int make_this_null) {
         this.opCode = opCode;
-        this.block = block;
 
-        byteLength = 4;
-        byteArray = new byte[byteLength];
-        int position = 0;
+        this.byteArray = new byte[4];
+        this.byteArray[0] = 0;
+        this.byteArray[1] = this.opCode;
 
-        byteArray[position] = zeroByte;
-        position++;
-        byteArray[position] = opCode;
-        position++;
-        byteArray[position] = zeroByte;
-        position++;
-        byteArray[position] = block;
+        System.arraycopy(block, 0, this.byteArray, 2, block.length);
     }
 
     //Error Packet
@@ -117,65 +102,37 @@ public class Packet {
         byteArray[position] = zeroByte;
     }
 
-    public Packet convertToPacket(byte[] byteArray) throws IOException {
+    public static Packet convertToPacket(byte[] byteArray) throws IOException {
         Packet packet;
         int postion = 1;
 
         //WRQ Packet
         if (byteArray[1] == 2) {
-            String fileName;
-            int fileNamePostion = 0;
-            int fileNameSizeCounter = 1;
-
-            opCode = byteArray[postion];
-            postion++;
-
-            while (byteArray[postion] != 0){
-                fileNameSizeCounter++;
-                postion++;
+            StringBuffer buffer = new StringBuffer();
+            int dataByte = 1;  // Start after opcode
+            while ((int) byteArray[++dataByte] != 0) {
+                buffer.append((char)byteArray[dataByte]);
             }
-            postion = postion - fileNameSizeCounter;
-            byte[] filenameBytes = new byte[fileNameSizeCounter];
-            while (byteArray[postion] != 0){
-                filenameBytes[fileNamePostion] = byteArray[postion];
-                fileNamePostion++;
-                postion++;
-            }
-            fileName = new String(filenameBytes, "UTF-8");
 
-            packet = new Packet(opCode, fileName);
-            return packet;
+            return new Packet((byte) 2, buffer.toString());
         }
 
         //Data Packet
         else if (byteArray[1] == 3) {
-            opCode = byteArray[postion];
-            postion++;
-            postion++;
-            block = byteArray[postion];
-            postion++;
-            int dataSize = byteArray.length - postion;
-            int dataPostion = 0;
-            byte[] convertedData = null;
-            while (postion <= byteArray.length) {
-                convertedData = new byte[dataSize];
-                convertedData[dataPostion] = byteArray[postion];
-                postion++;
-                dataPostion++;
-            }
 
-            packet = new Packet(opCode,block,convertedData);
-            return packet;
+            byte[] blockData = new byte[byteArray.length - 4];
+            System.arraycopy(byteArray, 4, blockData, 0, byteArray.length - 4);
+            byte[] blockNumber = {byteArray[2], byteArray[3]};
+            return new Packet((byte) 3 ,blockData, blockNumber);
+
         }
 
         //ACK Packet
         else if (byteArray[1] == 4) {
-            opCode = byteArray[postion];
-            postion++;
-            postion++;
-            block = byteArray[postion];
-            packet = new Packet(opCode,block,9);
-            return packet;
+
+            byte[] blockNumber = {byteArray[2], byteArray[3]};
+
+            return new Packet((byte) 4, blockNumber, 9);
         }
 
         //Error Packet
