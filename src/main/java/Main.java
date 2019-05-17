@@ -68,7 +68,7 @@ public class Main {
 
 
             Client client = new Client(dest, udpPort, ipv4, sequential, nodrops);
-            System.out.println("Throughput: " + client.sendFile(new File(path)));
+            client.sendFile(new File(path));
 
 
         } else if (side == 2) {

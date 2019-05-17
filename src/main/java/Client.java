@@ -21,103 +21,102 @@ public class Client {
         this.noDrops = noDrops;
     }
 
-    public double sendFile(File f) throws IOException {
+    public void sendFile(File f) throws IOException {
         if (!sequential) {
-            return sendSliding(f);
-        }
+            sendSliding(f);
 
-        int dataSize = 0;
-        long time = 0;
-        try {
+        }else {
 
-            //send WRQ
-            socket = new DatagramSocket();
-            byte[] data = Files.readAllBytes(f.toPath());
-            Packet reqPacket = new Packet((byte) 2, f.getPath());
-            DatagramPacket response = new DatagramPacket(new byte[516], 516);
+            int dataSize = 0;
+            long time = 0;
+            try {
 
-            DatagramPacket packetForSend;
+                //send WRQ
+                socket = new DatagramSocket();
+                byte[] data = Files.readAllBytes(f.toPath());
+                Packet reqPacket = new Packet((byte) 2, f.getPath());
+                DatagramPacket response = new DatagramPacket(new byte[516], 516);
+
+                DatagramPacket packetForSend;
 
 
-            if (ipv4) {
-                packetForSend = new DatagramPacket(reqPacket.getByteArray(), reqPacket.getByteArray().length, Inet4Address.getByName(ip), port);
-            } else {
-                packetForSend = new DatagramPacket(reqPacket.getByteArray(), reqPacket.getByteArray().length, Inet6Address.getByName(ip), port);
-            }
+                if (ipv4) {
+                    packetForSend = new DatagramPacket(reqPacket.getByteArray(), reqPacket.getByteArray().length, Inet4Address.getByName(ip), port);
+                } else {
+                    packetForSend = new DatagramPacket(reqPacket.getByteArray(), reqPacket.getByteArray().length, Inet6Address.getByName(ip), port);
+                }
 
-            socket.send(packetForSend);
-
-            //Receive initial packet
-            socket.receive(response);
-            System.out.println("ACK packet: " + Packet.convertToPacket(response.getData()));
-            time = System.nanoTime();
-            while (Packet.convertToPacket(response.getData()).getBlockNum() != 0) {
                 socket.send(packetForSend);
-                socket.receive(response);
-            }
 
-            //Send data and get ACK in between
-            int dataLeft = data.length;
-            dataSize = data.length;
-            short blockNumber = 0;
-            byte[] blockData = new byte[512];
-            int dropLottery = 101;
-            Packet nextData;
-            if (!noDrops)
-                dropLottery = ThreadLocalRandom.current().nextInt(100);
-            do {
-                System.arraycopy(data, blockNumber * 512, blockData, 0, 512);
-                nextData = new Packet((byte) 3, blockData, ByteBuffer.allocate(2).putShort(++blockNumber).array());
-                System.out.println("Block num: " + blockNumber);
-                packetForSend.setData(nextData.getByteArray());
-                if (ThreadLocalRandom.current().nextInt(100) != dropLottery)
-                    socket.send(packetForSend);
-                //Receive Ack
+                //Receive initial packet
                 socket.receive(response);
-                //Subtract data from dataLeft
-                dataLeft -= 512;
-                System.out.println(Packet.convertToPacket(response.getData()).getBlockNum());
-                while (Packet.convertToPacket(response.getData()).getBlockNum() != nextData.getBlockNum()) {
-                    System.out.println("uh oh");
+                System.out.println("ACK packet: " + Packet.convertToPacket(response.getData()));
+                time = System.nanoTime();
+                while (Packet.convertToPacket(response.getData()).getBlockNum() != 0) {
                     socket.send(packetForSend);
                     socket.receive(response);
                 }
+
+                //Send data and get ACK in between
+                int dataLeft = data.length;
+                dataSize = data.length;
+                short blockNumber = 0;
+                byte[] blockData = new byte[512];
+                int dropLottery = 101;
+                Packet nextData;
+                if (!noDrops)
+                    dropLottery = ThreadLocalRandom.current().nextInt(100);
+                do {
+                    System.arraycopy(data, blockNumber * 512, blockData, 0, 512);
+                    nextData = new Packet((byte) 3, blockData, ByteBuffer.allocate(2).putShort(++blockNumber).array());
+                    System.out.println("Block num: " + blockNumber);
+                    packetForSend.setData(nextData.getByteArray());
+                    if (ThreadLocalRandom.current().nextInt(100) != dropLottery)
+                        socket.send(packetForSend);
+                    //Receive Ack
+                    socket.receive(response);
+                    //Subtract data from dataLeft
+                    dataLeft -= 512;
+                    System.out.println(Packet.convertToPacket(response.getData()).getBlockNum());
+                    while (Packet.convertToPacket(response.getData()).getBlockNum() != nextData.getBlockNum()) {
+                        System.out.println("uh oh");
+                        socket.send(packetForSend);
+                        socket.receive(response);
+                    }
+                    while (response.getData()[1] == (byte) 5) {
+                        System.out.println("Error code: " + response.getData()[3]);
+                        socket.send(packetForSend);
+                        socket.receive(response);
+                    }
+
+                } while (dataLeft >= 512);
+
+                byte[] finalBlockData = new byte[dataLeft];
+                System.arraycopy(data, blockNumber * 512, finalBlockData, 0, dataLeft);
+                nextData = new Packet((byte) 3, finalBlockData, ByteBuffer.allocate(2).putShort(++blockNumber).array());
+                DatagramPacket finalPacket = new DatagramPacket(nextData.getByteArray(), nextData.getByteArray().length, packetForSend.getAddress(), port);
+                socket.send(finalPacket);
+                System.out.println("Data packet: " + nextData.getBlockNum());
+                socket.receive(response);
+                System.out.println("ACK packet: " + Packet.convertToPacket(response.getData()).getBlockNum());
+
                 while (response.getData()[1] == (byte) 5) {
                     System.out.println("Error code: " + response.getData()[3]);
-                    socket.send(packetForSend);
+                    socket.send(finalPacket);
                     socket.receive(response);
                 }
 
-            } while (dataLeft >= 512);
+                time = System.nanoTime() - time;
 
-            byte[] finalBlockData = new byte[dataLeft];
-            System.arraycopy(data, blockNumber * 512, finalBlockData, 0, dataLeft);
-            nextData = new Packet((byte) 3 , finalBlockData, ByteBuffer.allocate(2).putShort(++blockNumber).array());
-            DatagramPacket finalPacket = new DatagramPacket(nextData.getByteArray(), nextData.getByteArray().length, packetForSend.getAddress(), port);
-            socket.send(finalPacket);
-            System.out.println("Data packet: " + nextData.getBlockNum());
-            socket.receive(response);
-            System.out.println("ACK packet: " + Packet.convertToPacket(response.getData()).getBlockNum());
+                socket.close();
 
-            while (response.getData()[1] == (byte) 5) {
-                System.out.println("Error code: " + response.getData()[3]);
-                socket.send(finalPacket);
-                socket.receive(response);
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-
-            time = System.nanoTime() - time;
-
-            socket.close();
-
-        } catch (IOException e) {
-            e.printStackTrace();
         }
-
-
-        return calcTime(time, dataSize);
     }
 
-    private double sendSliding(File f) {
+    private void sendSliding(File f) {
         long time = 0;
         int dataSize = 0;
         try {
@@ -210,13 +209,6 @@ public class Client {
         } catch (IOException exception) {
             exception.printStackTrace();
         }
-
-        return calcTime(time, dataSize);
-    }
-
-
-    private static double calcTime(long time, int size) {
-        return Math.round((((double) size * 8.0) / 100000)/ ((double) time* 1_000_000));
     }
 
 
