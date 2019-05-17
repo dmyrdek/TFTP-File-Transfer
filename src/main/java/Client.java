@@ -216,7 +216,7 @@ public class Client {
 
 
     private static double calcTime(long time, int size) {
-        return Math.round(((((double) size * 8.0) / 100000)/ ((double) time)* 1_000_000));
+        return Math.round((((double) size * 8.0) / 100000)/ ((double) time* 1_000_000));
     }
 
 
